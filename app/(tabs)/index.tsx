@@ -9,18 +9,27 @@ import {
 import { supabase } from '../../lib/supabase';
 
 export default function HomeScreen() {
-const [acceptedMeets, setAcceptedMeets] = useState<any[]>([]);
+const [calendarMeets, setCalendarMeets] = useState<any[]>([]);
 const [totalConnections, setTotalConnections] = useState(0);
 const [totalMeets, setTotalMeets] = useState(0);
+const [calendarItems, setCalendarItems] = useState<any[]>([]);
 
 const loadHomeData = async () => {
-// Load meets
-const { data: meets } = await supabase
-.from('meets')
+
+// Load calendar items
+const { data: calendar } = await supabase
+.from('calendar_items')
 .select('*')
+.eq('profile_id', 'e8fb8729-6bd5-44d8-8785-63b7f001ad82')
 .order('created_at', { ascending: false });
 
-setAcceptedMeets(meets || []);
+setCalendarItems(calendar || []);
+
+// Load meets count
+const { data: meets } = await supabase
+.from('meets')
+.select('*');
+
 setTotalMeets(meets?.length || 0);
 
 // Load connections
@@ -39,25 +48,27 @@ loadHomeData();
 
 return (
 <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-<Text style={styles.header}>Spot Me</Text>
+<Text style={styles.header}>CommitMix</Text>
 <Text style={styles.subheader}>
 Your fitness community, all in one place.
 </Text>
 
-{/* ACCEPTED MEETS */}
+{/* CALENDAR */}
 <View style={styles.heroCard}>
-<Text style={styles.heroTitle}>Your Upcoming Meets</Text>
+<Text style={styles.heroTitle}>Your Calendar</Text>
 
-{acceptedMeets.length === 0 ? (
+{calendarItems.length === 0 ? (
 <Text style={styles.heroText}>
-You haven’t joined any meets yet.
+Nothing scheduled yet.
 </Text>
 ) : (
-acceptedMeets.slice(0, 3).map((meet) => (
-<View key={meet.id} style={{ marginBottom: 10 }}>
-<Text style={styles.heroStat}>{meet.title}</Text>
-<Text style={styles.heroText}>{meet.gym}</Text>
-<Text style={styles.heroText}>{meet.time}</Text>
+calendarItems.slice(0, 3).map((item) => (
+<View key={item.id} style={{ marginBottom: 10 }}>
+<Text style={styles.heroStat}>{item.title}</Text>
+<Text style={styles.heroText}>{item.date}</Text>
+<Text style={styles.heroText}>
+{item.type === 'meet' ? 'Meet' : 'Event'}
+</Text>
 </View>
 ))
 )}
@@ -94,7 +105,7 @@ Total Connections: {totalConnections}
 
 {/* WHY SPOT ME */}
 <View style={styles.card}>
-<Text style={styles.cardTitle}>Why Spot Me?</Text>
+<Text style={styles.cardTitle}>Why CommitMix?</Text>
 <Text style={styles.cardText}>
 Find gym partners, join meets, and train for real events
 with people near you.

@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import { useEffect, useMemo, useState } from 'react';
 import {
     Linking,
     Pressable,
@@ -8,6 +10,8 @@ import {
     TextInput,
     View,
 } from 'react-native';
+import { supabase } from '../../lib/supabase';
+
 
 const events = [
 {
@@ -79,36 +83,94 @@ url: 'https://runsignup.com/races',
 ];
 
 export default function EventsScreen() {
+const router = useRouter();
 const [searchQuery, setSearchQuery] = useState('');
+const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+const [favorites, setFavorites] = useState<number[]>([]);
+
+useEffect(() => {
+const loadData = async () => {
+const { data: profile } = await supabase
+.from('profiles')
+.select('id')
+.order('created_at', { ascending: false })
+.limit(1)
+.single();
+
+if (!profile) return;
+
+setCurrentProfileId(profile.id);
+
+
+};
+
+loadData();
+}, []);
+
+const toggleFavorite = async (eventId: number) => {
+if (!currentProfileId) return;
+
+const isFavorited = favorites.includes(eventId);
+
+if (isFavorited) {
+await supabase
+.from('event_favorites')
+.delete()
+.eq('profile_id', currentProfileId)
+.eq('event_id', eventId);
+
+setFavorites((prev) => prev.filter((id) => id !== eventId));
+} else {
+const { data, error } = await supabase.from('event_favorites').insert([
+{
+profile_id: currentProfileId,
+event_id: eventId,
+},
+]);
+
+if (error) {
+console.log('INSERT ERROR:', error);
+} else {
+console.log('INSERT SUCCESS:', data);
+}
+
+setFavorites((prev) => [...prev, eventId]);
+
+}
+};
 
 const openEventLink = async (url: string) => {
 const supported = await Linking.canOpenURL(url);
-
 if (!supported) {
 alert('Unable to open this event link right now.');
 return;
 }
-
 await Linking.openURL(url);
 };
 
 const filteredEvents = useMemo(() => {
-const query = searchQuery.trim().toLowerCase();
+const query = searchQuery.trim().
+toLowerCase();
+
 
 if (!query) return events;
 
 return events.filter((event) => {
 return (
-event.title.toLowerCase().includes(query) ||
+event.title.toLowerCase().
+includes(query) ||
 event.type.toLowerCase().includes(query) ||
 event.location.toLowerCase().includes(query)
+
 );
 });
 }, [searchQuery]);
 
 return (
 <View style={styles.container}>
-<Text style={styles.header}>Events</Text>
+<Text style={styles.header}>Events</
+Text>
+
 <Text style={styles.subheader}>
 Discover real races, obstacle events, fitness competitions, and runs.
 </Text>
@@ -121,7 +183,9 @@ value={searchQuery}
 onChangeText={setSearchQuery}
 />
 
-<ScrollView contentContainerStyle={styles.list}>
+<ScrollView contentContainerStyle={styles.
+list}>
+
 {filteredEvents.length === 0 ? (
 <View style={styles.emptyCard}>
 <Text style={styles.emptyTitle}>No events found</Text>
@@ -131,10 +195,18 @@ Try a different event name, location, or event type.
 </View>
 ) : (
 filteredEvents.map((event) => (
-
 <View key={event.id} style={styles.card}>
-<Text style={styles.title}>{event.
-title}</Text>
+{/* TITLE ROW WITH HEART */}
+<View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+<Text style={styles.title}>{event.title}</Text>
+<Pressable onPress={() => toggleFavorite(event.id)}>
+<Ionicons
+name={favorites.includes(event.id) ? 'heart' : 'heart-outline'}
+size={22}
+color={favorites.includes(event.id) ? '#22FF88' : '#9CA3AF'}
+/>
+</Pressable>
+</View>
 
 <Text style={styles.info}>Type: {event.type}</Text>
 <Text style={styles.info}>Location: {event.location}</Text>
@@ -145,13 +217,20 @@ title}</Text>
 style={styles.primaryButton}
 onPress={() => openEventLink(event.url)}
 >
-<Text style={styles.
-primaryButtonText}>View Details</Text>
+<Text style={styles.primaryButtonText}>View Details</Text>
+
 </Pressable>
 
-<Pressable style={styles.secondaryButton}>
+<Pressable
+style={styles.secondaryButton}
+onPress={() =>
+router.push({
+pathname: '/event-partners',
+params: { eventId: event.id },
+})
+}
+>
 <Text style={styles.secondaryButtonText}>Find Partners</Text>
-
 </Pressable>
 </View>
 </View>
@@ -189,7 +268,6 @@ paddingHorizontal: 14,
 paddingVertical: 14,
 color: '#FFFFFF',
 marginBottom: 18,
-
 },
 list: {
 paddingBottom: 140,

@@ -14,26 +14,15 @@ import { supabase } from '../../lib/supabase';
 const workoutTypes = ['Upper Body', 'Leg Day', 'Cardio', 'Full Body'];
 const meetTypes = ['Gym', 'Run', 'Hike'];
 
+// 🔒 Use same locked profile ID everywhere
+const CURRENT_USER_ID = 'e8fb8729-6bd5-44d8-8785-63b7f001ad82';
+
 export default function MeetsScreen() {
 const [gymName, setGymName] = useState('');
 const [meetTime, setMeetTime] = useState('');
 const [selectedWorkout, setSelectedWorkout] = useState('Upper Body');
 const [meetType, setMeetType] = useState<'Gym' | 'Run' | 'Hike'>('Gym');
 const [meets, setMeets] = useState<any[]>([]);
-const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
-
-const loadCurrentProfile = async () => {
-const { data } = await supabase
-.from('profiles')
-.select('id')
-.order('created_at', { ascending: false })
-.limit(1)
-.single();
-
-if (data?.id) {
-setCurrentProfileId(data.id);
-}
-};
 
 const loadMeets = async () => {
 const { data, error } = await supabase
@@ -43,14 +32,11 @@ const { data, error } = await supabase
 
 if (!error) {
 setMeets(data || []);
-} else {
-console.log('LOAD MEETS ERROR:', error);
 }
 };
 
 useFocusEffect(
 useCallback(() => {
-loadCurrentProfile();
 loadMeets();
 }, [])
 );
@@ -61,16 +47,15 @@ alert('Please fill in all fields');
 return;
 }
 
-const { data: profile, error: profileError } = await supabase
-.from('profiles')
-.select('id')
-.order('created_at', { ascending: false })
-.limit(1)
-.single();
-console.log('PROFILE ID BEING USED', profile?.id);
 
-if (profileError || !profile?.id) {
-alert('No profile found');
+const title =
+meetType === 'Gym'
+? `${meetType} • ${selectedWorkout}`
+: `${meetType} Meet`;
+
+const createMeet = async () => {
+if (!gymName || !meetTime) {
+alert('Please fill in all fields');
 return;
 }
 
@@ -79,26 +64,63 @@ meetType === 'Gym'
 ? `${meetType} • ${selectedWorkout}`
 : `${meetType} Meet`;
 
-const { error } = await supabase.from('meets').insert(
-[
-
+// 1️⃣ Insert into meets
+const { data: meetData, error: meetError } = await supabase
+.from('meets')
+.insert([
 {
 title,
 gym: gymName,
 time: meetTime,
 level: 'Open',
 attendees: 1,
-host_id: profile.id,
-creator_id: profile.id, // ✅ Added
+host_id: CURRENT_USER_ID,
+creator_id: CURRENT_USER_ID,
+},
+])
+.select()
+.single();
 
+console.log('MEET ERROR:', meetError);
+console.log('MEET DATA:', meetData);
+
+
+// 2️⃣ Insert into calendar
+const { error: calendarError } = await supabase
+.from('calendar_items')
+.insert([
+{
+profile_id: CURRENT_USER_ID,
+type: 'meet',
+reference_id: meetData.id,
+title,
+scheduled_at: new Date().toISOString(),
 },
 ]);
 
-if (error) {
-console.log('CREATE MEET ERROR:', error);
-alert(error.message);
+console.log('MEET INSERT DATA:', meetData);
+console.log('MEET INSERT ERROR:', meetError);
+
+if (meetError || !meetData) {
+    alert('Meet insert failed');
+    return;
+}
+
+if (calendarError) {
+alert(calendarError.message);
 return;
 }
+
+setGymName('');
+setMeetTime('');
+setSelectedWorkout('Upper Body');
+setMeetType('Gym');
+
+await loadMeets();
+
+alert('Meet created successfully 🎉');
+};
+
 
 setGymName('');
 setMeetTime('');
@@ -122,9 +144,7 @@ const { error } = await supabase
 .delete()
 .eq('id', id);
 
-if (error) {
-alert('Error deleting meet');
-} else {
+if (!error) {
 loadMeets();
 }
 },
@@ -133,11 +153,8 @@ loadMeets();
 };
 
 return (
-<ScrollView style={styles.container} contentContainerStyle={styles.
-content}>
-
-<Text style={styles.header}>Meets</
-Text>
+<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+<Text style={styles.header}>Meets</Text>
 
 <Text style={styles.subheader}>
 Create or join workouts with people near you.
@@ -215,20 +232,15 @@ selectedWorkout === type && styles.chipTextActive,
 )}
 
 <Pressable style={styles.createButton} onPress={createMeet}>
-<Text style={styles.
-createButtonText}>+ Create Meet</Text>
-
+<Text style={styles.createButtonText}>+ Create Meet</Text>
 </Pressable>
 </View>
 
-<Text style={styles.sectionTitle}>
-Upcoming Meets</Text>
-
+<Text style={styles.sectionTitle}>Upcoming Meets</Text>
 
 {meets.map((meet) => (
 <View key={meet.id} style={styles.meetCard}>
-<Text style={styles.meetTitle}>{
-meet.title}</Text>
+<Text style={styles.meetTitle}>{meet.title}</Text>
 <Text style={styles.meetInfo}>{meet.gym}</Text>
 <Text style={styles.meetInfo}>{meet.time}</Text>
 
@@ -236,7 +248,8 @@ meet.title}</Text>
 {meet.attendees} attending
 </Text>
 
-{meet.creator_id === currentProfileId && (
+{meet.creator_id === CURRENT_USER_ID && (
+
 <Pressable
 onPress={() => deleteMeet(meet.id)}
 style={{ marginTop: 10 }}

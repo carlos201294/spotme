@@ -1,6 +1,6 @@
 import * as ImagePicker from 'expo-image-picker';
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
     Image,
     Pressable,
@@ -11,26 +11,44 @@ import {
     View,
 } from 'react-native';
 import { supabase } from '../lib/supabase';
-import { getProfileData, setProfileData } from './(tabs)/profile';
 
 export default function EditProfileScreen() {
-const currentProfile = getProfileData();
+const [profileId, setProfileId] = useState<string | null>(null);
 
-const [name, setName] = useState(currentProfile.name);
-const [level, setLevel] = useState(currentProfile.level)
-;
+const [name, setName] = useState('');
+const [level, setLevel] = useState('');
+const [goal, setGoal] = useState('');
+const [gym, setGym] = useState('');
+const [availability, setAvailability] = useState('');
+const [profileImage, setProfileImage] = useState('');
 
-const [goal, setGoal] = useState(currentProfile.goal);
-const [gym, setGym] = useState(currentProfile.gym);
-const [availability, setAvailability] = useState(currentProfile.
-availability);
+// 🔥 Load profile directly from Supabase
+useEffect(() => {
+const loadProfile = async () => {
+const { data } = await supabase
+.from('profiles')
+.select('*')
+.eq('id', 'e8fb8729-6bd5-44d8-8785-63b7f001ad82')
+.single();
 
-const [profileImage, setProfileImage] = useState(currentProfile.
-profileImage || '');
+if (data) {
+setProfileId(data.id);
+setName(data.name || '');
+setLevel(data.level || '');
+setGoal(data.goal || '');
+setGym(data.gym || '');
+setAvailability(data.availability || '');
+setProfileImage(data.profile_image || '');
+}
+};
+
+loadProfile();
+}, []);
 
 
 const pickImage = async () => {
-const permissionResult = await ImagePicker.
+const permissionResult =
+await ImagePicker.
 requestMediaLibraryPermissionsAsync();
 
 
@@ -73,7 +91,6 @@ upsert: true,
 });
 
 if (uploadError) {
-console.log('UPLOAD ERROR:', uploadError);
 alert(`Image upload failed: ${uploadError.message}`);
 return;
 }
@@ -85,22 +102,12 @@ const { data: publicUrlData } = supabase.storage
 imageUrl = publicUrlData.publicUrl;
 }
 
-setProfileData({
-id: data?.id || currentProfile.id,
-name,
-level,
-goal,
-gym,
-availability,
-profileImage: imageUrl,
-});
-
-const { data, error } = await supabase
+const { error } = await supabase
 .from('profiles')
 .upsert(
 [
 {
-id: currentProfile.id,
+id: profileId,
 name,
 level,
 goal,
@@ -110,13 +117,11 @@ profile_image: imageUrl,
 },
 ],
 { onConflict: 'id' }
-)
-.select()
-.single();
+);
 
 if (error) {
-console.log('DB ERROR:', error);
-alert(`Profile saved locally, but not to Supabase: ${error.message}`);
+alert(`Profile save failed: ${error.message}`);
+
 return;
 }
 

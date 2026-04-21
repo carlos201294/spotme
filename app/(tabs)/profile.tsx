@@ -20,9 +20,10 @@ const loadProfile = async () => {
 const { data } = await supabase
 .from('profiles')
 .select('*')
-.order('created_at', { ascending: false })
-.limit(1)
+.eq('id', 'e8fb8729-6bd5-44d8-8785-63b7f001ad82')
 .single();
+
+console.log("PROFILE SCREEN ID:", data?.id);
 
 if (data) setProfile(data);
 };
@@ -50,16 +51,14 @@ content}>
 
 {/* Header */}
 <View style={styles.headerRow}>
-<Text style={styles.header}>Me</
-Text>
-
+<Text style={styles.header}>Me</Text>
 
 <View style={styles.iconRow}>
 <Pressable onPress={() => router.push('/connections')}>
 <Ionicons name="people-outline" size={26} color="#22FF88" />
 </Pressable>
 
-<Pressable onPress={() => router.push('/notifications')}
+<Pressable onPress={() => router.push('/requests')}
 >
 
 <Ionicons name="notifications-outline" size={26} color="#22FF88" />
@@ -68,7 +67,7 @@ Text>
 </View>
 
 <Text style={styles.subheader}>
-Your fitness identity on Spot Me Fit.
+Your fitness identity on CommitMix
 </Text>
 
 {/* Profile Card */}
@@ -76,7 +75,7 @@ Your fitness identity on Spot Me Fit.
 <Image
 source={{
 uri:
-profile.avatar_url ||
+profile.profile_image ||
 'https://i.imgur.com/6VBx3io.png',
 }}
 style={styles.avatar}
@@ -123,7 +122,7 @@ flex: 1,
 backgroundColor: '#050816',
 },
 content: {
-paddingTop: 28,
+paddingTop: 60,
 paddingHorizontal: 16,
 paddingBottom: 70,
 },
@@ -134,7 +133,7 @@ alignItems: 'center',
 },
 header: {
 color: '#22FF88',
-fontSize: 28,
+fontSize: 30,
 fontWeight: '800',
 },
 iconRow: {
@@ -143,37 +142,38 @@ gap: 12,
 },
 subheader: {
 color: '#9CA3AF',
-fontSize: 14,
-marginTop: 4,
+fontSize: 16,
+marginTop: 16,
 marginBottom: 14,
 },
 profileCard: {
 backgroundColor: '#0B1220',
-borderRadius: 20,
-padding: 16,
+borderRadius: 22,
+padding: 34,
+marginTop: 18,
 borderWidth: 1,
 borderColor: '#22FF88',
 alignItems: 'center',
-marginBottom: 16,
+marginBottom: 22,
 },
 avatar: {
-width: 82,
-height: 82,
+width: 92,
+height: 92,
 borderRadius: 999,
-marginBottom: 10,
+marginBottom: 18,
 },
 name: {
 color: '#FFFFFF',
 fontSize: 22,
 fontWeight: '800',
-marginBottom: 6,
+marginBottom: 10,
 },
 levelBadge: {
 backgroundColor: '#22FF88',
-paddingHorizontal: 14,
-paddingVertical: 5,
+paddingHorizontal: 18,
+paddingVertical: 8,
 borderRadius: 999,
-marginBottom: 10,
+marginBottom: 16,
 },
 levelText: {
 color: '#050816',
@@ -182,8 +182,8 @@ fontSize: 14,
 },
 meta: {
 color: '#9CA3AF',
-fontSize: 14,
-marginBottom: 3,
+fontSize: 15,
+marginBottom: 6,
 },
 statsCard: {
 backgroundColor: '#111827',
