@@ -1,37 +1,42 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Stack } from 'expo-router';
 import { useEffect, useState } from 'react';
+import { supabase } from '../lib/supabase';
 
 export default function RootLayout() {
-const [isReady, setIsReady] = useState(false);
-const [showTerms, setShowTerms] = useState(false);
+const [session, setSession] = useState<any>(null);
+const [ready, setReady] = useState(false);
 
 useEffect(() => {
-const checkTerms = async () => {
-const accepted = await AsyncStorage.getItem('termsAccepted');
-if (!accepted) {
-setShowTerms(true);
-}
-setIsReady(true);
+const check = async () => {
+const { data } = await supabase.auth.getSession();
+setSession(data.session);
+setReady(true);
 };
 
-checkTerms();
+check();
+
+const { data: listener } = supabase.auth.onAuthStateChange(
+(_event, session) => {
+setSession(session);
+}
+);
+
+return () => {
+listener.subscription.unsubscribe();
+};
 }, []);
 
-if (!isReady) return null;
+if (!ready) return null;
 
 return (
 <Stack screenOptions={{ headerShown: false }}>
-{showTerms ? (
-<>
-<Stack.Screen name="terms" />
-<Stack.Screen name="privacy" />
-</>
+{session ? (
+[
+<Stack.Screen key="tabs" name="(tabs)" />,
+<Stack.Screen key="chat" name="chat/[id]" />
+]
 ) : (
-<>
-<Stack.Screen name="(tabs)" />
-<Stack.Screen name="privacy" />
-</>
+<Stack.Screen name="login" />
 )}
 </Stack>
 );

@@ -21,14 +21,19 @@ const [goal, setGoal] = useState('');
 const [gym, setGym] = useState('');
 const [availability, setAvailability] = useState('');
 const [profileImage, setProfileImage] = useState('');
+const [cardBackground, setCardBackground] = useState('#0B1220');
+const [bio, setBio] = useState('');
 
 // 🔥 Load profile directly from Supabase
 useEffect(() => {
 const loadProfile = async () => {
-const { data } = await supabase
+const { data: { user } } = await supabase.auth.getUser();
+if (!user) return;
+
+const { data } = await supabase 
 .from('profiles')
 .select('*')
-.eq('id', 'e8fb8729-6bd5-44d8-8785-63b7f001ad82')
+.eq('id', user.id)
 .single();
 
 if (data) {
@@ -39,6 +44,8 @@ setGoal(data.goal || '');
 setGym(data.gym || '');
 setAvailability(data.availability || '');
 setProfileImage(data.profile_image || '');
+setCardBackground(data.card_background || '#0B1220');
+setBio(data.bio || '');
 }
 };
 
@@ -76,6 +83,13 @@ setProfileImage(result.assets[
 const saveProfile = async () => {
 let imageUrl = profileImage;
 
+const { data: { user } } = await supabase.auth.getUser();
+
+if (!user) {
+    alert("User not found");
+    return;
+}
+
 if (profileImage && !profileImage.startsWith('http')) {
 
 const fileName = `profiles/${Date.now()}.jpg`;
@@ -104,20 +118,17 @@ imageUrl = publicUrlData.publicUrl;
 
 const { error } = await supabase
 .from('profiles')
-.upsert(
-[
-{
-id: profileId,
+.update({
 name,
 level,
 goal,
 gym,
 availability,
 profile_image: imageUrl,
-},
-],
-{ onConflict: 'id' }
-);
+card_background: cardBackground,
+bio,
+})
+.eq('id', user.id);
 
 if (error) {
 alert(`Profile save failed: ${error.message}`);
@@ -132,7 +143,7 @@ router.back();
 return (
 <ScrollView style={styles.container} contentContainerStyle={styles.content}>
 <Text style={styles.header}>Edit Profile</Text>
-<Text style={styles.subheader}>Update your Spot Me information.</Text>
+<Text style={styles.subheader}>Update your Bio.</Text>
 
 <View style={styles.photoSection}>
 {profileImage ? (
@@ -189,6 +200,36 @@ placeholderTextColor="#9CA3AF"
 value={availability}
 onChangeText={setAvailability}
 />
+
+<TextInput
+style={styles.input}
+placeholder="Bio"
+placeholderTextColor="#777"
+value={bio}
+onChangeText={setBio}
+multiline
+/>
+
+<Text style={{ color: '#fff', marginTop: 20, marginBottom: 8 }}>
+Card Background
+</Text>
+
+<View style={{ flexDirection: 'row', gap: 12 }}>
+{['#0B1220', '#1F2937', '#14532D', '#1E3A8A', '#7C2D12'].map((color) => (
+<Pressable
+key={color}
+onPress={() => setCardBackground(color)}
+style={{
+width: 36,
+height: 36,
+borderRadius: 18,
+backgroundColor: color,
+borderWidth: cardBackground === color ? 3 : 1,
+borderColor: '#22FF88',
+}}
+/>
+))}
+</View>
 
 <Pressable style={styles.saveButton} onPress={saveProfile}>
 <Text style={styles.saveButtonText}>Save Changes</Text>

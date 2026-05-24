@@ -24,6 +24,20 @@ gestureEnabled: false,
 });
 }, []);
 
+// ✅ NEW: Check if terms already accepted
+useEffect(() => {
+const checkTerms = async () => {
+const storedVersion = await AsyncStorage.getItem('termsVersion');
+
+if (storedVersion === CURRENT_TERMS_VERSION) {
+router.replace('/(tabs)');
+}
+};
+
+checkTerms();
+
+}, []);
+
 const handleContinue = async () => {
 await AsyncStorage.setItem('termsVersion', CURRENT_TERMS_VERSION);
 
@@ -35,16 +49,18 @@ return (
 <ScrollView contentContainerStyle={styles.
 content}>
 
-<Text style={styles.header}>Commitix Terms & Conditions</Text>
+<Text style={styles.header}>
+Spot Me Terms & Conditions
+</Text>
 
 <Text style={styles.text}>
-You must be 18 years or older to use this app. Commitix is a
+You must be 18 years or older to use this app. Spot Me is a
 social fitness coordination platform that allows users to
 create and join fitness-related meetups and events.
 </Text>
 
 <Text style={styles.text}>
-Commitix does not supervise, organize, or control in-person
+Spot Me does not supervise, organize, or control in-person
 meetings. Any meetups arranged through this platform are done
 entirely at your own risk.
 </Text>
@@ -52,7 +68,7 @@ entirely at your own risk.
 <Text style={styles.text}>
 By using this app, you acknowledge and accept full
 responsibility for your safety, conduct, and decisions.
-Commitix is not liable for injury, damages, loss, theft,
+Spot Me is not liable for injury, damages, loss, theft,
 harassment, or any incidents that occur before, during,
 or after in-person meetings.
 </Text>
@@ -62,14 +78,12 @@ Continued use of this app constitutes agreement to these
 Terms & Conditions and the Privacy Policy.
 </Text>
 
-{/* Privacy Link */}
 <Pressable onPress={() => router.push('/privacy')}>
 <Text style={{ color: '#22FF88', marginBottom: 20 }}>
 View Privacy Policy
 </Text>
 </Pressable>
 
-{/* Checkbox 1 */}
 <Pressable
 style={styles.checkboxRow}
 onPress={() => setAgeConfirmed(!ageConfirmed)}
@@ -80,7 +94,6 @@ I confirm I am 18 years or older
 </Text>
 </Pressable>
 
-{/* Checkbox 2 */}
 <Pressable
 style={styles.checkboxRow}
 onPress={() => setAgreed(!agreed)}

@@ -27,17 +27,13 @@ receiver: ConnectionUser;
 };
 
 export default function ConnectionsScreen() {
-const [connections, setConnections] = useState<ConnectionUser[]>([]);
+const [connections, setConnections] = useState<SpotUser[]>([]);
 
 const loadConnections = async () => {
-const { data: profile } = await supabase
-.from('profiles')
-.select('id')
-.order('created_at', { ascending: false })
-.limit(1)
-.single();
+const { data: { user } } = await supabase.auth.getUser();
+if (!user) return;
 
-if (!profile?.id) return;
+const CURRENT_USER_ID = user.id;
 
 const { data, error } = await supabase
 .from('connections')
@@ -60,7 +56,13 @@ gym,
 profile_image
 )
 `)
-.eq('status', 'accepted');
+.eq('status', 'accepted')
+.or(
+`requester_id.eq.${CURRENT_USER_ID},receiver_id.eq.${CURRENT_USER_ID}`
+);
+
+console.log("CURRENT_USER_ID:", CURRENT_USER_ID);
+console.log("CONNECTION DATA:", data);
 
 if (error) {
 console.log('LOAD CONNECTIONS ERROR:', error);
@@ -68,11 +70,18 @@ setConnections([]);
 return;
 }
 
-const filtered = ((data as ConnectionRow[]) || []).map((conn) => {
-return conn.requester.id === profile.id ? conn.receiver : conn.requester;
+const filtered = (data || []).map((conn: any) => {
+return conn.requester_id === CURRENT_USER_ID
+? conn.receiver
+: conn.requester;
 });
 
-setConnections(filtered);
+const cleaned = filtered.filter(
+(user: any) => user?.id !== CURRENT_USER_ID
+);
+
+setConnections(cleaned);
+
 };
 
 useFocusEffect(
@@ -82,7 +91,9 @@ loadConnections();
 );
 
 return (
-<ScrollView style={styles.container} contentContainerStyle={styles.content}>
+<ScrollView style={styles.container} contentContainerStyle={styles.
+content}>
+
 <Text style={styles.header}>Your Connections</Text>
 
 {connections.length === 0 ? (
@@ -112,18 +123,24 @@ profileImage: user.profile_image || '',
 {user.profile_image ? (
 <Image source={{ uri: user.profile_image }} style={styles.avatar} />
 ) : (
-<View style={styles.avatarPlaceholder}>
+<View style={styles.
+avatarPlaceholder}>
 <Text style={styles.avatarText}>{initial}</Text>
+
 </View>
 )}
 
 <View style={styles.info}>
-<Text style={styles.name}>{name}</Text>
+<Text style={styles.name}>{name}</
+Text>
+
 {!!user.goal && <Text style={styles.meta}>Goal: {user.goal}</Text>}
 {!!user.gym && <Text style={styles.meta}>Gym: {user.gym}</Text>}
 </View>
 
-<Text style={styles.chevron}>›</Text>
+<Text style={styles.chevron}>›</
+Text>
+
 </Pressable>
 );
 })
@@ -146,8 +163,40 @@ header: {
 color: '#22FF88',
 fontSize: 28,
 fontWeight: '800',
+marginBottom: 20,
+},
+empty: {
+color: '#9CA3AF',
+},
+card: {
+flexDirection: 'row',
+alignItems: 'center',
+backgroundColor: '#111827',
+padding: 16,
+borderRadius: 16,
+marginBottom: 14,
+},
+avatar: {
+width: 58,
+height: 58,
+borderRadius: 29,
+},
+avatarPlaceholder: {
+width: 58,
+height: 58,
+borderRadius: 29,
+backgroundColor: '#0B1220',
+justifyContent: 'center',
+alignItems: 'center',
+},
+avatarText: {
+color: '#22FF88',
+fontWeight: '800',
+fontSize: 20,
+},
+info: {
 flex: 1,
-marginLeft: 12,
+marginLeft: 14,
 },
 name: {
 color: '#fff',

@@ -16,44 +16,20 @@ const [totalConnections, setTotalConnections] = useState(0);
 const [totalMeets, setTotalMeets] = useState(0);
 const [calendarItems, setCalendarItems] = useState<any[]>([]);
 const [selectedDate, setSelectedDate] = useState<string | null>(null);
+const [profileId, setProfileId] = useState<string | null>(null);
 
-const PROFILE_ID = 'e8fb8729-6bd5-44d8-8785-63b7f001ad82';
-
-// 🔔 Load data + schedule reminders
+// 🔔 Load data
 useFocusEffect(
 useCallback(() => {
 const loadHomeData = async () => {
+    if (!profileId) return;
+
 const { data: calendar } = await supabase
 .from('calendar_items')
 .select('*')
-.eq('profile_id', PROFILE_ID);
+.eq('profile_id', profileId);
 
 setCalendarItems(calendar || []);
-
-// 🔔 Schedule reminders if enabled
-if (calendar) {
-for (const item of calendar) {
-if (!item.reminder_enabled || !item.date) continue;
-
-const eventDate = new Date(item.date);
-if (isNaN(eventDate.getTime())) continue;
-
-const reminderTime = new Date(
-eventDate.getTime() - 60 * 60 * 1000
-);
-
-if (reminderTime <= new Date()) continue;
-
-await Notifications.scheduleNotificationAsync({
-content: {
-title: item.title,
-body: 'Your event starts in 1 hour.',
-data: { date: item.date },
-},
-trigger: reminderTime,
-});
-}
-}
 
 const { data: meets } = await supabase
 .from('meets')
@@ -69,15 +45,12 @@ setTotalConnections(connections?.length || 0);
 };
 
 loadHomeData();
-}, [])
+}, [profileId])
 );
 
 // 🔔 Register push permissions
 const registerForPushNotifications = async () => {
-if (!Device.isDevice) {
-alert('Push notifications require a physical device.');
-return;
-}
+if (!Device.isDevice) return;
 
 const { status: existingStatus } =
 await Notifications.getPermissionsAsync();
@@ -90,37 +63,56 @@ await Notifications.requestPermissionsAsync();
 finalStatus = status;
 }
 
-if (finalStatus !== 'granted') {
-alert('Permission not granted for notifications.');
-return;
-}
+if (finalStatus !== 'granted') return;
+
 
 const tokenData =
-await Notifications.getExpoPushTokenAsync();
+await Notifications.
+getExpoPushTokenAsync();
+
 
 await supabase
 .from('profiles')
 .update({ push_token: tokenData.data })
-.eq('id', PROFILE_ID);
+.eq('id', profileId);
 };
 
 useEffect(() => {
-registerForPushNotifications();
+    const getUser = async () => {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+            setProfileId(user.id);
+        }
+    };
+
+    getUser();
+}, []);
+
+useEffect(() => {
+registerForPushNotifications()
+;
+
 }, []);
 
 // 🔔 Handle notification tap
 useEffect(() => {
 const subscription =
-Notifications.addNotificationResponseReceivedListener(
+Notifications.
+addNotificationResponseReceivedListener(
+
 (response) => {
 const date =
-response.notification.request.content.data?.date;
+response.notification.request.
+content.data?.date;
+
 
 if (date) {
 const parsed = new Date(date);
 if (!isNaN(parsed.getTime())) {
 const formatted =
-parsed.toISOString().split('T')[0];
+parsed.toISOString().split('T'
+)[0];
+
 setSelectedDate(formatted);
 }
 }
@@ -130,7 +122,7 @@ setSelectedDate(formatted);
 return () => subscription.remove();
 }, []);
 
-// 🔥 Multi-dot marking
+// 🔥 Multi-dot marking with meet-type colors
 const markedDates = calendarItems.reduce(
 (acc: any, item) => {
 if (!item?.date) return acc;
@@ -139,19 +131,31 @@ const parsedDate = new Date(item.date);
 if (isNaN(parsedDate.getTime())) return acc;
 
 const formatted =
-parsedDate.toISOString().split('T')[0];
+parsedDate.getFullYear() +
+'-' +
+String(parsedDate.getMonth() + 1).padStart(2, '0') +
+'-' +
+String(parsedDate.getDate()).padStart(2, '0');
 
 if (!acc[formatted]) {
 acc[formatted] = { dots: [] };
-
 }
+
+const dotColor =
+item.meet_type === 'Gym'
+? '#22FF88'
+: item.meet_type === 'Run'
+? '#3B82F6'
+: item.meet_type === 'Hike'
+? '#FACC15'
+: item.meet_type === 'Miscellaneous'
+? '#EF4444'
+: '#22FF88';
+
 
 acc[formatted].dots.push({
 key: item.id,
-color:
-item.type === 'meet'
-? '#22FF88'
-: '#3B82F6',
+color: dotColor,
 });
 
 return acc;
@@ -177,8 +181,11 @@ if (isNaN(parsedDate.getTime()))
 return false;
 
 const formatted =
-parsedDate.toISOString().
-split('T')[0];
+parsedDate.getFullYear() +
+'-' +
+String(parsedDate.getMonth() + 1).padStart(2, '0') +
+'-' +
+String(parsedDate.getDate()).padStart(2, '0');
 
 
 return formatted === selectedDate;
@@ -191,7 +198,7 @@ style={styles.container}
 contentContainerStyle={styles.
 content}
 >
-<Text style={styles.header}>Commitix</Text>
+<Text style={styles.header}>Spot Me</Text>
 
 
 <Text style={styles.subheader}>
@@ -232,18 +239,29 @@ itemsForSelectedDate.length > 0 && (
 key={item.id}
 style={{ marginBottom: 8 }}
 >
-<Text
-style={styles.heroStat}
->
+<Text style={styles.heroStat}>
 {item.title}
 </Text>
-<Text
-style={styles.heroText}
->
-{item.type === 'meet'
-? 'Meet'
-: 'Event'}
+
+{item.location && (
+<Text style={styles.heroText}>
+📍 {item.location}
 </Text>
+)}
+
+<Text style={styles.heroText}>
+🕒{' '}
+{new Date(
+item.date
+).toLocaleString()}
+</Text>
+
+{item.meet_type && (
+<Text style={styles.heroText}>
+{item.meet_type} Meet
+</Text>
+)}
+
 </View>
 )
 )}
@@ -266,7 +284,7 @@ Nothing scheduled for this date.
 
 <View style={styles.card}>
 <Text style={styles.cardTitle}>
-Today’s Motivation
+Everyday Motivation
 </Text>
 <Text style={styles.cardText}>
 • I believe in my skills and abilities.
@@ -276,9 +294,6 @@ Today’s Motivation
 </Text>
 <Text style={styles.cardText}>
 • I am proud of who I am becoming.
-</Text>
-<Text style={styles.cardText}>
-• I belong.
 </Text>
 </View>
 
@@ -296,10 +311,10 @@ Total Connections: {totalConnections}
 
 <View style={styles.card}>
 <Text style={styles.cardTitle}>
-Why Commitix?
+Why 'Spot Me'?
 </Text>
 <Text style={styles.cardText}>
-Find gym partners, join meets,
+Find gym partners, running partners, hiking partners, join meets,
 and train for real events with
 people near you.
 </Text>

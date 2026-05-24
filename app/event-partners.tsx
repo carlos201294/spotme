@@ -2,6 +2,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useLocalSearchParams } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
+    Image,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -12,48 +13,67 @@ import { supabase } from '../lib/supabase';
 
 export default function EventPartnersScreen() {
 const { eventId } = useLocalSearchParams();
+console.log('EVENT PARTNERS SCREEN EVENT ID:', eventId);
 const [users, setUsers] = useState<any[]>([]);
 const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
 const [requestedIds, setRequestedIds] = useState<string[]>([]);
 
 const loadCurrentProfile = async () => {
-const { data } = await supabase
-.from('profiles')
-.select('id')
-.order('created_at', { ascending: false })
-.limit(1)
-.single();
+const {
+data: { user },
+} = await supabase.auth.getUser();
 
-if (data?.id) setCurrentProfileId(data.id);
+if (!user) return null;
+
+setCurrentProfileId(user.id);
+
+return user.id;
 };
 
-const loadUsers = async () => {
+const loadUsers = async (profileId: string) => {
 if (!eventId) return;
 
-const { data, error } = await supabase
+const { data: favoriteRows, error } = await supabase
 .from('event_favorites')
-.select(`
-profile_id,
-profiles (
-id,
-name,
-goal,
-gym
-)
-`)
-.eq('event_id', Number(eventId));
+.select('profile_id')
+.eq('event_id', eventId);
 
 if (error) {
 console.log('LOAD PARTNERS ERROR:', error);
 return;
 }
 
+const profileIds =
+favoriteRows?.map(row => row.profile_id) || [];
+
+const { data: profilesData } = await supabase
+.from('profiles')
+.select(`
+id,
+name,
+goal,
+gym,
+profile_image
+`)
+.in('id', profileIds);
+
+console.log('CURRENT PROFILE ID:', currentProfileId);
+console.log('PROFILES DATA:', profilesData);
+
 const extractedUsers =
-data
-?.map((item: any) => item.profiles)
-.filter((u: any) => u?.id !== currentProfileId) || [];
+profilesData?.filter((u: any) => {
+if (!u) return false;
+
+return u.id !== profileId;
+}) || [];
 
 setUsers(extractedUsers);
+
+if (error) {
+console.log('LOAD PARTNERS ERROR:', error);
+console.log('PARTNERS DATA:', profilesData);
+return;
+}
 };
 
 const sendConnectionRequest = async (receiverId: string) => {
@@ -77,9 +97,16 @@ setRequestedIds((prev) => [...prev, receiverId]);
 
 useFocusEffect(
 useCallback(() => {
-loadCurrentProfile();
-loadUsers();
-}, [eventId, currentProfileId])
+const loadAll = async () => {
+const profileId = await loadCurrentProfile();
+
+if (profileId) {
+await loadUsers(profileId);
+}
+};
+
+loadAll();
+}, [eventId])
 );
 
 return (
@@ -103,6 +130,20 @@ const alreadyRequested = requestedIds.includes(user.id);
 
 return (
 <View key={index} style={styles.card}>
+
+{user.profile_image ? (
+<Image
+source={{ uri: user.profile_image }}
+style={styles.avatar}
+/>
+) : (
+<View style={styles.avatarPlaceholder}>
+<Text style={styles.avatarText}>
+{user.name?.charAt(0)?.toUpperCase() || 'U'}
+</Text>
+</View>
+)}
+
 <Text style={styles.name}>
 {user?.name || 'User'}
 </Text>
@@ -216,5 +257,29 @@ marginBottom: 6,
 },
 emptyText: {
 color: '#9CA3AF',
+},
+avatar: {
+width: 70,
+height: 70,
+borderRadius: 35,
+marginBottom: 14,
+alignSelf: 'center',
+},
+
+avatarPlaceholder: {
+width: 70,
+height: 70,
+borderRadius: 35,
+backgroundColor: '#0B1220',
+justifyContent: 'center',
+alignItems: 'center',
+marginBottom: 14,
+alignSelf: 'center',
+},
+
+avatarText: {
+color: '#22FF88',
+fontWeight: '800',
+fontSize: 24,
 },
 });

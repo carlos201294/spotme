@@ -1,7 +1,10 @@
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback, useState } from 'react';
+import { router } from 'expo-router';
+import { useCallback, useEffect, useState } from 'react';
 import {
     Alert,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -9,30 +12,70 @@ import {
     TextInput,
     View,
 } from 'react-native';
+
 import { supabase } from '../../lib/supabase';
 
 const workoutTypes = ['Upper Body', 'Leg Day', 'Cardio', 'Full Body'];
-const meetTypes = ['Gym', 'Run', 'Hike'];
-
-// 🔒 Use same locked profile ID everywhere
-const CURRENT_USER_ID = 'e8fb8729-6bd5-44d8-8785-63b7f001ad82';
+const meetTypes = ['Gym', 'Run', 'Hike', 'Miscellaneous'];
 
 export default function MeetsScreen() {
+const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+
 const [gymName, setGymName] = useState('');
-const [meetTime, setMeetTime] = useState('');
+const [meetDate, setMeetDate] = useState<Date | null>(null);
+const [showPicker, setShowPicker] = useState(false);
 const [selectedWorkout, setSelectedWorkout] = useState('Upper Body');
-const [meetType, setMeetType] = useState<'Gym' | 'Run' | 'Hike'>('Gym');
+const [meetType, setMeetType] =
+useState<'Gym' | 'Run' | 'Hike' | 'Miscellaneous'>('Gym');
+const [maxAttendees, setMaxAttendees] = useState('');
 const [meets, setMeets] = useState<any[]>([]);
 
+const [participantCounts, setParticipantCounts] = useState<any>({});
+
+useEffect(() => {
+const getUser = async () => {
+const { data: { user } } = await supabase.auth.getUser();
+if (user) setCurrentUserId(user.id);
+};
+getUser();
+}, []);
+
+useEffect(() => {
+    loadMeets();
+    loadParticipantCounts();
+}, []);
+
 const loadMeets = async () => {
-const { data, error } = await supabase
+const { data } = await supabase
 .from('meets')
 .select('*')
 .order('created_at', { ascending: false });
 
-if (!error) {
 setMeets(data || []);
+};
+
+const loadParticipantCounts = async () => {
+const { data, error } = await supabase
+.from('meet_participants')
+.select('*');
+
+if (error) {
+console.log('COUNT ERROR:', error);
+return;
 }
+
+console.log('PARTICIPANTS:', data);
+
+const counts: any = {};
+
+data?.forEach((item) => {
+const meetId = Number(item.meet);
+
+counts[meetId] =
+(counts[meetId] || 0) + 1;
+});
+
+setParticipantCounts(counts);
 };
 
 useFocusEffect(
@@ -42,19 +85,7 @@ loadMeets();
 );
 
 const createMeet = async () => {
-if (!gymName || !meetTime) {
-alert('Please fill in all fields');
-return;
-}
-
-
-const title =
-meetType === 'Gym'
-? `${meetType} • ${selectedWorkout}`
-: `${meetType} Meet`;
-
-const createMeet = async () => {
-if (!gymName || !meetTime) {
+if (!gymName || !meetDate || !maxAttendees || !currentUserId) {
 alert('Please fill in all fields');
 return;
 }
@@ -64,72 +95,95 @@ meetType === 'Gym'
 ? `${meetType} • ${selectedWorkout}`
 : `${meetType} Meet`;
 
-// 1️⃣ Insert into meets
-const { data: meetData, error: meetError } = await supabase
+const isoDate = meetDate.toISOString();
+
+const { data: meetData, error } = await supabase
 .from('meets')
 .insert([
 {
 title,
 gym: gymName,
-time: meetTime,
+time: isoDate,
+meet_type: meetType,
 level: 'Open',
 attendees: 1,
-host_id: CURRENT_USER_ID,
-creator_id: CURRENT_USER_ID,
+max_attendees: parseInt(maxAttendees),
+host_id: currentUserId,
+creator_id: currentUserId,
 },
 ])
-.select()
+.select('*')
 .single();
 
-console.log('MEET ERROR:', meetError);
-console.log('MEET DATA:', meetData);
-
-
-// 2️⃣ Insert into calendar
-const { error: calendarError } = await supabase
-.from('calendar_items')
-.insert([
-{
-profile_id: CURRENT_USER_ID,
-type: 'meet',
-reference_id: meetData.id,
-title,
-scheduled_at: new Date().toISOString(),
-},
-]);
-
-console.log('MEET INSERT DATA:', meetData);
-console.log('MEET INSERT ERROR:', meetError);
-
-if (meetError || !meetData) {
-    alert('Meet insert failed');
-    return;
-}
-
-if (calendarError) {
-alert(calendarError.message);
+if (error) {
+console.log(error);
+alert(JSON.stringify(error));
 return;
 }
 
+await supabase.from('calendar_items').insert([
+{
+profile_id: currentUserId,
+type: 'meet',
+reference_id: meetData.id,
+title,
+date: isoDate,
+meet_type: meetType,
+location: gymName,
+},
+]);
+
 setGymName('');
-setMeetTime('');
+setMeetDate(null);
 setSelectedWorkout('Upper Body');
 setMeetType('Gym');
+setMaxAttendees('');
 
 await loadMeets();
-
 alert('Meet created successfully 🎉');
 };
 
+const joinMeet = async (meet: any) => {
+if (!currentUserId) return;
 
-setGymName('');
-setMeetTime('');
-setSelectedWorkout('Upper Body');
-setMeetType('Gym');
+if (meet.attendees >= meet.max_attendees) {
+alert('This meet is full.');
+return;
+}
 
-await loadMeets();
+const { data: existing } = await supabase
+.from('meet_requests')
+.select('*')
+.eq('meet_id', Number(meet.id))
+.eq('user_id', currentUserId)
+.maybeSingle();
 
-alert('Meet created successfully 🎉');
+if (existing) {
+alert('You have already requested to join this meet.');
+return;
+}
+
+const { data, error } = await supabase
+.from('meet_requests')
+.insert([
+{
+meet_id: meet.id,
+user_id: currentUserId,
+status: 'pending',
+},
+])
+.select('*');
+
+console.log('INSERTED REQUEST:', data);
+console.log('INSERT ERROR:', error);
+
+if (error) {
+console.log('MEET REQUEST INSERT ERROR:', error);
+alert(error.message);
+return;
+}
+
+alert('Request sent to host ✅');
 };
 
 const deleteMeet = async (id: number) => {
@@ -139,18 +193,22 @@ Alert.alert('Delete Meet?', 'This cannot be undone.', [
 text: 'Delete',
 style: 'destructive',
 onPress: async () => {
-const { error } = await supabase
-.from('meets')
-.delete()
-.eq('id', id);
-
-if (!error) {
+await supabase.from('meets').delete().eq('id', id);
 loadMeets();
-}
 },
 },
 ]);
 };
+
+const formattedDate =
+meetDate &&
+meetDate.toLocaleString(undefined, {
+weekday: 'short',
+month: 'short',
+day: 'numeric',
+hour: 'numeric',
+minute: '2-digit',
+});
 
 return (
 <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -161,9 +219,7 @@ Create or join workouts with people near you.
 </Text>
 
 <View style={styles.card}>
-<Text style={styles.cardTitle}>
-Create a Meet</Text>
-
+<Text style={styles.cardTitle}>Create a Meet</Text>
 
 <Text style={styles.label}>Meet Type</Text>
 <View style={styles.chipRow}>
@@ -198,11 +254,33 @@ onChangeText={setGymName}
 
 <TextInput
 style={styles.input}
-placeholder="Time (example: Saturday • 10:00 AM)"
+placeholder="Max Attendees"
 placeholderTextColor="#9CA3AF"
-value={meetTime}
-onChangeText={setMeetTime}
+value={maxAttendees}
+onChangeText={setMaxAttendees}
+keyboardType="numeric"
 />
+
+<Pressable
+style={styles.input}
+onPress={() => setShowPicker(true)}
+>
+<Text style={{ color: meetDate ? '#FFFFFF' : '#9CA3AF' }}>
+{meetDate ? formattedDate : 'Select Date & Time'}
+</Text>
+</Pressable>
+
+{showPicker && (
+<DateTimePicker
+value={meetDate || new Date()}
+mode="datetime"
+display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+onChange={(event, selected) => {
+setShowPicker(false);
+if (selected) setMeetDate(selected);
+}}
+/>
+)}
 
 {meetType === 'Gym' && (
 <>
@@ -242,14 +320,15 @@ selectedWorkout === type && styles.chipTextActive,
 <View key={meet.id} style={styles.meetCard}>
 <Text style={styles.meetTitle}>{meet.title}</Text>
 <Text style={styles.meetInfo}>{meet.gym}</Text>
-<Text style={styles.meetInfo}>{meet.time}</Text>
-
-<Text style={styles.attendeesText}>
-{meet.attendees} attending
+<Text style={styles.meetInfo}>
+{new Date(meet.time).toLocaleString()}
 </Text>
 
-{meet.creator_id === CURRENT_USER_ID && (
+<Text style={styles.attendeesText}>
+{participantCounts[String(meet.id)] || 1}/{meet.max_attendees} attending
+</Text>
 
+{meet.creator_id === currentUserId ? (
 <Pressable
 onPress={() => deleteMeet(meet.id)}
 style={{ marginTop: 10 }}
@@ -258,7 +337,50 @@ style={{ marginTop: 10 }}
 Delete Meet
 </Text>
 </Pressable>
+) : (
+<Pressable
+onPress={() => joinMeet(meet)}
+style={{ marginTop: 10 }}
+>
+<Text style={{ color: '#22FF88', fontWeight: '700' }}>
+Join Meet
+</Text>
+</Pressable>
 )}
+
+<Pressable
+onPress={async () => {
+
+if (meet.creator_id === currentUserId) {
+router.push(`/meet-chat/${Number(meet.id)}`);
+return;
+}
+
+const { data: participant } = await supabase
+.from('meet_participants')
+.select('*')
+.eq('meet_id', Number(meet.id))
+.eq('user_id', currentUserId)
+.maybeSingle();
+
+console.log('MEET ID CHECK:', meet.id);
+console.log('CURRENT USER CHECK:', currentUserId);
+console.log('PARTICIPANT RESULT:', participant);
+
+if (!participant) {
+alert('You must be approved by the host to access this private chat.');
+return;
+}
+
+router.push(`/meet-chat/${Number(meet.id)}`);
+
+}}
+style={{ marginTop: 10 }}
+>
+<Text style={{ color: '#22FF88', fontWeight: '700' }}>
+💬 Open Chat
+</Text>
+</Pressable>
 </View>
 ))}
 </ScrollView>
@@ -266,26 +388,10 @@ Delete Meet
 }
 
 const styles = StyleSheet.create({
-container: {
-flex: 1,
-backgroundColor: '#050816',
-},
-content: {
-paddingTop: 60,
-paddingHorizontal: 20,
-paddingBottom: 120,
-},
-header: {
-color: '#22FF88',
-fontSize: 30,
-fontWeight: '800',
-},
-subheader: {
-color: '#9CA3AF',
-fontSize: 15,
-marginTop: 8,
-marginBottom: 20,
-},
+container: { flex: 1, backgroundColor: '#050816' },
+content: { paddingTop: 60, paddingHorizontal: 20, paddingBottom: 120 },
+header: { color: '#22FF88', fontSize: 30, fontWeight: '800' },
+subheader: { color: '#9CA3AF', fontSize: 15, marginTop: 8, marginBottom: 20 },
 card: {
 backgroundColor: '#111827',
 borderRadius: 18,
@@ -309,19 +415,10 @@ paddingHorizontal: 14,
 paddingVertical: 12,
 color: '#FFFFFF',
 marginBottom: 12,
+justifyContent: 'center',
 },
-label: {
-color: '#FFFFFF',
-fontWeight: '700',
-marginBottom: 10,
-marginTop: 6,
-},
-chipRow: {
-flexDirection: 'row',
-flexWrap: 'wrap',
-gap: 10,
-marginBottom: 16,
-},
+label: { color: '#FFFFFF', fontWeight: '700', marginBottom: 10, marginTop: 6 },
+chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
 chip: {
 borderWidth: 1,
 borderColor: '#1F2937',
@@ -330,18 +427,9 @@ borderRadius: 999,
 paddingHorizontal: 14,
 paddingVertical: 10,
 },
-chipActive: {
-backgroundColor: '#22FF88',
-borderColor: '#22FF88',
-},
-chipText: {
-color: '#9CA3AF',
-fontWeight: '600',
-},
-chipTextActive: {
-color: '#050816',
-fontWeight: '800',
-},
+chipActive: { backgroundColor: '#22FF88', borderColor: '#22FF88' },
+chipText: { color: '#9CA3AF', fontWeight: '600' },
+chipTextActive: { color: '#050816', fontWeight: '800' },
 createButton: {
 backgroundColor: '#22FF88',
 borderRadius: 14,
@@ -373,10 +461,7 @@ fontSize: 18,
 fontWeight: '700',
 marginBottom: 6,
 },
-meetInfo: {
-color: '#9CA3AF',
-marginBottom: 4,
-},
+meetInfo: { color: '#9CA3AF', marginBottom: 4 },
 attendeesText: {
 color: '#22FF88',
 fontWeight: '700',

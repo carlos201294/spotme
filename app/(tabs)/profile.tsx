@@ -13,19 +13,50 @@ import {
 import { supabase } from '../../lib/supabase';
 
 export default function ProfileScreen() {
-const [profile, setProfile] = useState<any>(null);
+const [profile, setProfile] = useState<any | null>(null);
+const [loading, setLoading] = useState(true);
 const router = useRouter();
+const [bio, setBio] = useState('');
+
+const handleLogout = async () => {
+    await supabase.auth.signOut();
+    router.replace('/login');
+};
 
 const loadProfile = async () => {
-const { data } = await supabase
+setLoading(true);
+
+const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+console.log("CURRENT AUTH USER ID:", user?.id);
+
+if (userError || !user) {
+console.log('Auth error or no user:', userError);
+setLoading(false);
+return;
+}
+
+const { data, error } = await supabase
 .from('profiles')
 .select('*')
-.eq('id', 'e8fb8729-6bd5-44d8-8785-63b7f001ad82')
-.single();
+.eq('id', user.id)
+.maybeSingle();
 
-console.log("PROFILE SCREEN ID:", data?.id);
+if (error) {
+console.log('Profile fetch error:', error);
+setLoading(false);
+return;
+}
 
-if (data) setProfile(data);
+if (!data) {
+console.log('No profile row found for this user');
+setLoading(false);
+return;
+}
+
+console.log('PROFILE SCREEN ID:', data.id);
+setProfile(data);
+setLoading(false);
 };
 
 useFocusEffect(
@@ -34,7 +65,7 @@ loadProfile();
 }, [])
 );
 
-if (!profile) {
+if (loading) {
 return (
 <View style={styles.container}>
 <Text style={{ color: '#fff', marginTop: 100, textAlign: 'center' }}>
@@ -44,34 +75,44 @@ Loading...
 );
 }
 
+if (!profile) {
 return (
-<ScrollView style={styles.container} contentContainerStyle={styles.
-content}>
+<View style={styles.container}>
+<Text style={{ color: '#fff', marginTop: 100, textAlign: 'center' }}>
+No profile found.
+</Text>
+</View>
+);
+}
 
-
+return (
+<ScrollView style={styles.container} contentContainerStyle={styles.content}>
 {/* Header */}
 <View style={styles.headerRow}>
-<Text style={styles.header}>Me</Text>
+<Text style={styles.header}>Profile</Text>
 
 <View style={styles.iconRow}>
 <Pressable onPress={() => router.push('/connections')}>
 <Ionicons name="people-outline" size={26} color="#22FF88" />
 </Pressable>
 
-<Pressable onPress={() => router.push('/requests')}
->
-
+<Pressable onPress={() => router.push('/requests')}>
 <Ionicons name="notifications-outline" size={26} color="#22FF88" />
 </Pressable>
 </View>
 </View>
 
 <Text style={styles.subheader}>
-Your fitness identity on CommitMix
+Your identity on Spot Me
 </Text>
 
 {/* Profile Card */}
-<View style={styles.profileCard}>
+<View
+style={[
+    styles.profileCard,
+    { backgroundColor: profile.card_background || '#0B1220' },
+]}
+>
 <Image
 source={{
 uri:
@@ -81,7 +122,7 @@ profile.profile_image ||
 style={styles.avatar}
 />
 
-<Text style={styles.name}>{profile.name || 'Spot User'}</Text>
+<Text style={styles.name}>{profile.name || 'Fit User'}</Text>
 
 <View style={styles.levelBadge}>
 <Text style={styles.levelText}>
@@ -98,9 +139,10 @@ Availability: {profile.availability}
 
 {/* Stats */}
 <View style={styles.statsCard}>
-<Text style={styles.statsTitle}>Stats</Text>
+<Text style={styles.statsTitle}>Bio</Text>
+
 <Text style={styles.statsText}>
-Your activity and stats will appear here once you start using the app.
+{profile.bio || 'No bio added yet.'}
 </Text>
 </View>
 
@@ -110,6 +152,13 @@ style={styles.editButton}
 onPress={() => router.push('/edit-profile')}
 >
 <Text style={styles.editButtonText}>Edit Profile</Text>
+</Pressable>
+
+<Pressable
+style={[styles.editButton, {marginTop: 12, backgroundColor: '#Ef4444'}]}
+onPress={handleLogout}
+>
+    <Text style={styles.editButtonText}>Log Out</Text>
 </Pressable>
 
 </ScrollView>

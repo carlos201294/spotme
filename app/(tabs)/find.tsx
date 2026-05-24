@@ -1,4 +1,3 @@
-import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 import {
@@ -18,52 +17,81 @@ name: string | null;
 goal: string | null;
 gym: string | null;
 profile_image: string | null;
+bio: string | null;
+availability: string | null;
+level: string | null
 };
 
 export default function FindScreen() {
 const [users, setUsers] = useState<SpotUser[]>([]);
 const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
-const [pendingRequests, setPendingRequests] = useState<string[]>([]);
+const [currentUserGym, setCurrentUserGym] = useState<string | null>(null);
+const [excludedIds, setExcludedIds] = useState<string[]>([]);
 
+// ✅ FIXED: Properly load logged in user's profile
 const loadCurrentProfile = async () => {
-const { data } = await supabase
+const {
+data: { user },
+} = await supabase.auth.getUser();
+
+if (!user) return null;
+
+const { data, error } = await supabase
 .from('profiles')
-.select('id')
-.order('created_at', { ascending: false })
-.limit(1)
+.select('id, gym')
+.eq('id', user.id)
 .single();
 
-if (data?.id) {
-setCurrentProfileId(data.id);
-return data.id;
-}
+if (error || !data) return null;
 
-return null;
+setCurrentProfileId(data.id);
+setCurrentUserGym(data.gym || null);
+
+return data.id;
 };
 
 const loadUsers = async () => {
 const { data } = await supabase
 .from('profiles')
-.select('id, name, goal, gym, profile_image')
+.select('id, name, goal, gym, profile_image, bio, availability, level')
 .order('created_at', { ascending: false });
 
 setUsers(data || []);
 };
 
-const loadPendingRequests = async (profileId: string) => {
-const { data } = await supabase
+const loadExclusions = async (profileId: string) => {
+const { data: connections } = await supabase
 .from('connections')
-.select('receiver_id')
-.eq('requester_id', profileId)
-.eq('status', 'pending');
+.select('requester_id, receiver_id, status')
+.or(`requester_id.eq.${
+profileId},receiver_id.eq.${profileId}`);
 
-const ids = data?.map((item) => item.receiver_id) || [];
-setPendingRequests(ids);
+
+const connectionIds =
+connections?.flatMap((c) => {
+if (c.status === 'accepted') {
+return c.requester_id === profileId
+? [c.receiver_id]
+: [c.requester_id];
+}
+return [];
+}) || [];
+
+const { data: blocked } = await supabase
+.from('blocked_users')
+.select('blocked_profile_id')
+.eq('blocker_profile_id', profileId);
+
+const blockedIds =
+blocked?.map((b) => b.blocked_profile_id) || [];
+
+setExcludedIds([...
+connectionIds, ...blockedIds]);
 };
 
+// ✅ CONNECT WORKING + SAFE
 const sendConnectionRequest = async (receiverId: string) => {
 if (!currentProfileId) return;
-if (pendingRequests.includes(receiverId)) return;
 
 const { error } = await supabase.from('connections').insert([
 {
@@ -73,9 +101,12 @@ status: 'pending',
 },
 ]);
 
-if (!error) {
-setPendingRequests((prev) => [...prev, receiverId]);
+if (error) {
+Alert.alert('Error sending request');
+return;
 }
+
+Alert.alert('Connection request sent');
 };
 
 const blockUser = async (blockedId: string) => {
@@ -88,21 +119,30 @@ blocked_profile_id: blockedId,
 },
 ]);
 
-setUsers((prev) => prev.filter((u) => u.id !== blockedId));
+setExcludedIds((prev) => [...prev, blockedId]);
 };
 
 const reportUser = async (reportedId: string) => {
 if (!currentProfileId) return;
 
-await supabase.from('reports').
-insert([
-
+const { data, error } = await supabase
+.from('reports')
+.insert([
 {
 reporter_profile_id: currentProfileId,
 reported_profile_id: reportedId,
 reason: 'general',
 },
-]);
+])
+.select();
+
+console.log('REPORT DATA:', data);
+console.log('REPORT ERROR:', error);
+
+if (error) {
+Alert.alert('Failed to report user');
+return;
+}
 
 Alert.alert('User reported');
 };
@@ -121,9 +161,7 @@ const loadAll = async () => {
 const profileId = await loadCurrentProfile();
 await loadUsers();
 if (profileId) {
-await loadPendingRequests(profileId)
-;
-
+await loadExclusions(profileId);
 }
 };
 
@@ -131,12 +169,25 @@ loadAll();
 }, [])
 );
 
-const visibleUsers = users.filter((u) => u.id !== currentProfileId);
+const visibleUsers = users
+.filter(
+(u) =>
+u.id !== currentProfileId &&
+!excludedIds.includes(u.id)
+)
+.sort((a, b) => {
+if (!currentUserGym) return 0;
+
+const aMatch = a.gym === currentUserGym;
+const bMatch = b.gym === currentUserGym;
+
+if (aMatch && !bMatch) return -1;
+if (!aMatch && bMatch) return 1;
+return 0;
+});
 
 return (
 <View style={styles.container}>
-
-{/* HEADER WITH CHAT ICON */}
 <View style={styles.headerRow}>
 <View>
 <Text style={styles.header}>Spot People</Text>
@@ -144,42 +195,46 @@ return (
 Discover gym partners near you
 </Text>
 </View>
-
-<Pressable onPress={() => router.push('/connections')}>
-<Ionicons
-name="chatbubble-outline"
-size={26}
-color="#22FF88"
-/>
-</Pressable>
 </View>
 
 <ScrollView contentContainerStyle={styles.list}>
-
 {visibleUsers.map((user) => {
 const name = user.name || 'Spot User';
 const initial = name.charAt(0).toUpperCase();
-const isRequested = pendingRequests.includes(user.id);
 
 return (
-<View key={user.id} style={styles.card}>
+<Pressable
+key={user.id}
+style={styles.card}
+onPress={() =>
+router.push({
+pathname: '/connection-details',
+params: {
+id: user.id,
+name: user.name,
+goal: user.goal,
+gym: user.gym,
+profileImage: user.profile_image,
+bio: user.bio,
+availability: user.availability,
+level: user.level,
+},
+})
+}
+>
 {user.profile_image ? (
 <Image
 source={{ uri: user.profile_image }}
 style={styles.avatar}
 />
 ) : (
-<View style={styles.
-avatarPlaceholder}>
+<View style={styles.avatarPlaceholder}>
 <Text style={styles.avatarText}>{initial}</Text>
-
 </View>
 )}
 
 <View style={styles.info}>
-<Text style={styles.name}>{name}</
-Text>
-
+<Text style={styles.name}>{name}</Text>
 {!!user.goal && (
 <Text style={styles.meta}>🎯 {user.goal}</Text>
 )}
@@ -190,32 +245,19 @@ Text>
 
 <View style={styles.actions}>
 <Pressable
-style={[
-styles.connectBtn,
-isRequested && styles.requestedBtn,
-]}
-onPress={() => sendConnectionRequest(user.id)
-}
-
-disabled={isRequested}
+style={styles.connectBtn}
+onPress={() => sendConnectionRequest(user.id)}
 >
-<Text
-style={[
-styles.connectText,
-isRequested && styles.requestedText,
-]}
->
-{isRequested ? 'Requested' : 'Connect'}
+<Text style={styles.connectText}>
+Connect
 </Text>
 </Pressable>
 
 <Pressable onPress={() => openMenu(user.id)}>
-<Text style={styles.menuDots}>•••</
-Text>
-
+<Text style={styles.menuDots}>•••</Text>
 </Pressable>
 </View>
-</View>
+</Pressable>
 );
 })}
 </ScrollView>
@@ -244,7 +286,6 @@ fontWeight: '800',
 subheader: {
 color: '#9CA3AF',
 marginTop: 4,
-
 },
 list: {
 paddingBottom: 120,
@@ -300,12 +341,6 @@ borderRadius: 10,
 connectText: {
 color: '#050816',
 fontWeight: '800',
-},
-requestedBtn: {
-backgroundColor: '#1F2937',
-},
-requestedText: {
-color: '#9CA3AF',
 },
 menuDots: {
 color: '#9CA3AF',

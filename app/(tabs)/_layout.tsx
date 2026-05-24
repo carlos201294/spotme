@@ -91,9 +91,7 @@ tabBarIcon: ({ color, size }) => (
 />
 
 {/* Hidden routes */}
-<Tabs.Screen name="requests" options={{ href: null }} />
-<Tabs.Screen name="connections" options={{ href: null }} />
-<Tabs.Screen name="connection-details" options={{ href: null }} />
+
 
 </Tabs>
 );

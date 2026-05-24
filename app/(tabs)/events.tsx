@@ -12,7 +12,6 @@ import {
 } from 'react-native';
 import { supabase } from '../../lib/supabase';
 
-
 const events = [
 {
 id: 1,
@@ -99,9 +98,19 @@ const { data: profile } = await supabase
 
 if (!profile) return;
 
-setCurrentProfileId(profile.id);
+setCurrentProfileId(profile.id
+);
 
+// 🔥 LOAD FAVORITES FROM DATABASE
+const { data: savedFavorites } = await supabase
+.from('event_favorites')
+.select('event_id')
+.eq('profile_id', profile.id);
 
+if (savedFavorites) {
+const ids = savedFavorites.map((f) => f.event_id);
+setFavorites(ids);
+}
 };
 
 loadData();
@@ -121,21 +130,18 @@ await supabase
 
 setFavorites((prev) => prev.filter((id) => id !== eventId));
 } else {
-const { data, error } = await supabase.from('event_favorites').insert([
+
+console.log('SAVING FAVORITE EVENT ID:', eventId);
+console.log('CURRENT PROFILE:', currentProfileId);
+
+await supabase.from('event_favorites').insert([
 {
 profile_id: currentProfileId,
 event_id: eventId,
 },
 ]);
 
-if (error) {
-console.log('INSERT ERROR:', error);
-} else {
-console.log('INSERT SUCCESS:', data);
-}
-
 setFavorites((prev) => [...prev, eventId]);
-
 }
 };
 
@@ -149,27 +155,22 @@ await Linking.openURL(url);
 };
 
 const filteredEvents = useMemo(() => {
-const query = searchQuery.trim().
-toLowerCase();
-
+const query = searchQuery.trim().toLowerCase();
 
 if (!query) return events;
 
 return events.filter((event) => {
 return (
-event.title.toLowerCase().
-includes(query) ||
+event.title.toLowerCase().includes(query) ||
 event.type.toLowerCase().includes(query) ||
 event.location.toLowerCase().includes(query)
-
 );
 });
 }, [searchQuery]);
 
 return (
 <View style={styles.container}>
-<Text style={styles.header}>Events</
-Text>
+<Text style={styles.header}>Events</Text>
 
 <Text style={styles.subheader}>
 Discover real races, obstacle events, fitness competitions, and runs.
@@ -183,22 +184,13 @@ value={searchQuery}
 onChangeText={setSearchQuery}
 />
 
-<ScrollView contentContainerStyle={styles.
-list}>
-
-{filteredEvents.length === 0 ? (
-<View style={styles.emptyCard}>
-<Text style={styles.emptyTitle}>No events found</Text>
-<Text style={styles.emptyText}>
-Try a different event name, location, or event type.
-</Text>
-</View>
-) : (
-filteredEvents.map((event) => (
+<ScrollView contentContainerStyle={styles.list}>
+{filteredEvents.map((event) => (
 <View key={event.id} style={styles.card}>
-{/* TITLE ROW WITH HEART */}
 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-<Text style={styles.title}>{event.title}</Text>
+<Text style={styles.title}>{event.
+title}</Text>
+
 <Pressable onPress={() => toggleFavorite(event.id)}>
 <Ionicons
 name={favorites.includes(event.id) ? 'heart' : 'heart-outline'}
@@ -217,7 +209,8 @@ color={favorites.includes(event.id) ? '#22FF88' : '#9CA3AF'}
 style={styles.primaryButton}
 onPress={() => openEventLink(event.url)}
 >
-<Text style={styles.primaryButtonText}>View Details</Text>
+<Text style={styles.
+primaryButtonText}>View Details</Text>
 
 </Pressable>
 
@@ -230,12 +223,13 @@ params: { eventId: event.id },
 })
 }
 >
-<Text style={styles.secondaryButtonText}>Find Partners</Text>
+<Text style={styles.
+secondaryButtonText}>Find Partners</Text>
 </Pressable>
 </View>
 </View>
-))
-)}
+))}
+
 </ScrollView>
 </View>
 );
@@ -318,22 +312,5 @@ marginLeft: 6,
 secondaryButtonText: {
 color: '#22FF88',
 fontWeight: '700',
-},
-emptyCard: {
-backgroundColor: '#111827',
-borderRadius: 18,
-padding: 18,
-borderWidth: 1,
-borderColor: '#1F2937',
-},
-emptyTitle: {
-color: '#FFFFFF',
-fontSize: 18,
-fontWeight: '700',
-marginBottom: 8,
-},
-emptyText: {
-color: '#9CA3AF',
-lineHeight: 22,
 },
 });
